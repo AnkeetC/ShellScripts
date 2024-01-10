@@ -1,0 +1,43 @@
+import boto3
+from datetime import datetime, timedelta
+
+def cleanup_ecr_images(repository_name, retention_count, retention_days):
+    # Create an ECR client
+    ecr = boto3.client('ecr')
+
+    # List images in the repository
+    response = ecr.describe_images(repositoryName=repository_name)
+
+    # Get all image details
+    image_details = response['imageDetails']
+
+    # Sort images by creation date
+    sorted_images = sorted(image_details, key=lambda x: x['imagePushedAt'], reverse=True)
+
+    # Retain the last 'retention_count' images, irrespective of age
+    images_to_retain = sorted_images[:retention_count]
+
+    # Calculate the cutoff date for retaining images based on 'retention_days'
+    cutoff_date = datetime.now() - timedelta(days=retention_days)
+
+    # Identify images older than 'retention_days' and not in the 'images_to_retain' list
+    images_to_delete = [image for image in sorted_images if image not in images_to_retain and datetime.strptime(image['imagePushedAt'], "%Y-%m-%dT%H:%M:%S.%fZ") < cutoff_date]
+
+    # Delete the identified images
+    for image in images_to_delete:
+        image_digest = image['imageDigest']
+        print(f"Deleting image: {image_digest}")
+        ecr.batch_delete_image(repositoryName=repository_name, imageIds=[{'imageDigest': image_digest}])
+
+if __name__ == "__main__":
+    # Replace 'your_repository_name' with the actual name of your ECR repository
+    repository_name = 'my-repository-ecr'
+
+    # Set the number of images to retain
+    retention_count = 5
+
+    # Set the number of days to retain images
+    retention_days = 30
+
+    cleanup_ecr_images(repository_name, retention_count, retention_days)
+
